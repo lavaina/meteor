@@ -109,9 +109,14 @@ _.extend(ExpectationManager.prototype, {
   }
 });
 
-testAsyncMulti = function (name, funcs) {
+testAsyncMulti = function (name,timeout,funcs) {
   // XXX Tests on remote browsers are _slow_. We need a better solution.
-  var timeout = 180000;
+
+  // Backward compatibility
+  if( Array.isArray(timeout) ){
+    funcs = timeout;
+    timeout = 180000;
+  }
 
   Tinytest.addAsync(name, function (test, onComplete) {
     var remaining = _.clone(funcs);
