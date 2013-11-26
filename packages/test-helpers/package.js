@@ -15,7 +15,6 @@ Package.on_use(function (api) {
   // the like.
   api.use('livedata');
 
-
   api.export([
     'pollUntil', 'try_all_permutations',
     'SeededRandom', 'ReactiveVar', 'clickElement', 'blurElement',
@@ -40,4 +39,5 @@ Package.on_test(function (api) {
   api.use(['test-helpers', 'underscore']);
   api.add_files('try_all_permutations_test.js', 'client');
   api.add_files('seeded_random_test.js');
+  api.add_files('async_multi_test.js', ['client','server']);
 });
