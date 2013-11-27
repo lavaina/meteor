@@ -1,10 +1,10 @@
 var withLatency = function(time, cb) {
-  return Meteor.setTimeout(function() {
-    return cb();
+  Meteor.setTimeout(function() {
+    cb();
   }, time);
 };
 
-testAsyncMulti("testAsyncMulti - backward compatibility",[
+testAsyncMulti("test-helpers - timeout backward compatibility",[
 
   function(test){
     test.isTrue(true);
@@ -15,13 +15,15 @@ testAsyncMulti("testAsyncMulti - backward compatibility",[
 
 ]);
 
-testAsyncMulti("testAsyncMulti - with timeout",300,[
+testAsyncMulti("test-helpers - timeout",300,[
 
   function(test,onComplete){
     withLatency(200,onComplete(function(){
       test.isTrue(true);
     }));
-  },  function(test,onComplete){
+  },
+
+  function(test,onComplete){
     withLatency(200,onComplete(function(){
       test.isTrue(true);
     }));
