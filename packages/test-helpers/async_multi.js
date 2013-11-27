@@ -115,7 +115,7 @@ testAsyncMulti = function (name,timeout,funcs) {
   // Backward compatibility
   if( Array.isArray(timeout) ){
     funcs = timeout;
-    timeout = 180000;
+    timeout = 5000; // 5 seconds
   }
 
   Tinytest.addAsync(name, function (test, onComplete) {
