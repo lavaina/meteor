@@ -1,4 +1,4 @@
-=> Meteor 0.6.6.2: Upstream security fix: update to Node 0.10.21.
+=> Meteor 0.7.0.1: Fix hang while setting up local MongoDB.
 
-   This is being downloaded in the background. Update your project
-   to Meteor 0.6.6.2 by running 'meteor update'.
+   This release is being downloaded in the background. Update your
+   project to Meteor 0.7.0.1 by running 'meteor update'.

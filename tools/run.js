@@ -20,6 +20,7 @@ var unipackage = require('./unipackage.js');
 var _ = require('underscore');
 var inFiber = require('./fiber-helpers.js').inFiber;
 var Future = require('fibers/future');
+var Fiber = require('fibers');
 
 ////////// Globals //////////
 //XXX: Refactor to not have globals anymore?
@@ -115,7 +116,8 @@ var startProxy = function (outerPort, innerPort, callback) {
   var proxy = httpProxy.createProxyServer({
     // agent is required to handle keep-alive, and http-proxy 1.0 is a little
     // buggy without it: https://github.com/nodejitsu/node-http-proxy/pull/488
-    agent: new http.Agent({maxSockets: 100})
+    agent: new http.Agent({maxSockets: 100}),
+    xfwd: true
   });
 
   var server = http.createServer(function (req, res) {
@@ -241,6 +243,8 @@ var startServer = function (options) {
 
   env.PORT = options.innerPort;
   env.MONGO_URL = options.mongoUrl;
+  if (options.oplogUrl)
+    env.MONGO_OPLOG_URL = options.oplogUrl;
   env.ROOT_URL = options.rootUrl;
   if (options.settings)
     env.METEOR_SETTINGS = options.settings;
@@ -303,16 +307,26 @@ var startServer = function (options) {
       return;
     }
 
-    var obj = Log.parse(line) || Log.objFromText(line);
-    console.log(Log.format(obj, { color:true }));
-    saveLog({stdout: Log.format(obj)});
+    if (options.rawLogs) {
+      console.log(line);
+      saveLog({stdout: line});
+    } else {
+      var obj = Log.parse(line) || Log.objFromText(line);
+      console.log(Log.format(obj, { color:true }));
+      saveLog({stdout: Log.format(obj)});
+    }
   });
 
   eachline(proc.stderr, 'utf8', function (line) {
     if (!line) return;
-    var obj = Log.objFromText(line, { level: 'warn', stderr: true });
-    console.log(Log.format(obj, { color: true }));
-    saveLog({stderr: Log.format(obj)});
+    if (options.rawLogs) {
+      console.error(line);
+      saveLog({stderr: line});
+    } else {
+      var obj = Log.objFromText(line, { level: 'warn', stderr: true });
+      console.log(Log.format(obj, { color: true }));
+      saveLog({stderr: Log.format(obj)});
+    }
   });
 
   proc.on('close', function (code, signal) {
@@ -401,6 +415,15 @@ exports.run = function (context, options) {
   // Allow override and use of external mongo. Matches code in launch_mongo.
   var mongoUrl = process.env.MONGO_URL ||
         ("mongodb://127.0.0.1:" + mongoPort + "/meteor");
+  // Allow people to specify an MONGO_OPLOG_URL override. If someone specifies a
+  // MONGO_URL but not an MONGO_OPLOG_URL, disable the oplog. If neither is
+  // specified, use the default internal mongo oplog.
+  var oplogUrl = undefined;
+  if (!options.disableOplog) {
+    oplogUrl = process.env.MONGO_OPLOG_URL ||
+      (process.env.MONGO_URL ? undefined
+       : "mongodb://127.0.0.1:" + mongoPort + "/local");
+  }
   var firstRun = true;
 
   var serverHandle;
@@ -553,8 +576,10 @@ exports.run = function (context, options) {
       outerPort: outerPort,
       innerPort: innerPort,
       mongoUrl: mongoUrl,
+      oplogUrl: oplogUrl,
       rootUrl: rootUrl,
       library: context.library,
+      rawLogs: options.rawLogs,
       onExit: function (code) {
         // on server exit
         Status.running = false;
@@ -586,55 +611,64 @@ exports.run = function (context, options) {
   var mongoErrorTimer;
   var mongoStartupPrintTimer;
   var launch = function () {
-    Status.mongoHandle = mongo_runner.launch_mongo(
-      context.appDir,
-      mongoPort,
-      function () { // On Mongo startup complete
-        // don't print mongo startup is slow warning.
-        if (mongoStartupPrintTimer) {
-          clearTimeout(mongoStartupPrintTimer);
-          mongoStartupPrintTimer = null;
+    Fiber(function () {
+      Status.mongoHandle = mongo_runner.launchMongo({
+        context: context,
+        port: mongoPort,
+        onListen: function () { // On Mongo startup complete
+          // don't print mongo startup is slow warning.
+          if (mongoStartupPrintTimer) {
+            clearTimeout(mongoStartupPrintTimer);
+            mongoStartupPrintTimer = null;
+          }
+          restartServer();
+        },
+        onExit: function (code, signal, stderr) { // On Mongo dead
+          if (Status.shuttingDown) {
+            return;
+          }
+
+          // Print only last 20 lines of stderr.
+          stderr = stderr.split('\n').slice(-20).join('\n');
+
+          console.log(
+            stderr + "Unexpected mongo exit code " + code + ". Restarting.\n");
+
+          // if mongo dies 3 times with less than 5 seconds between each,
+          // declare it failed and die.
+          mongoErrorCount += 1;
+          if (mongoErrorCount >= 3) {
+            var explanation = mongoExitCodes.Codes[code];
+            console.log("Can't start mongod\n");
+            if (explanation)
+              console.log(explanation.longText);
+            if (explanation === mongoExitCodes.EXIT_NET_ERROR) {
+              console.log(
+                "\nCheck for other processes listening on port " + mongoPort +
+                  "\nor other meteors running in the same project.");
+            }
+            if (!explanation && /GLIBC/i.test(stderr)) {
+              console.log(
+                "\nLooks like you are trying to run Meteor on an old Linux " +
+                  "distribution. Meteor on Linux requires glibc version 2.9 " +
+                  "or above. Try upgrading your distribution to the latest " +
+                  "version.");
+            }
+            process.exit(1);
+          }
+
+          if (mongoErrorTimer)
+            clearTimeout(mongoErrorTimer);
+          mongoErrorTimer = setTimeout(function () {
+            mongoErrorCount = 0;
+            mongoErrorTimer = null;
+          }, 5000);
+
+          // Wait a sec to restart.
+          setTimeout(launch, 1000);
         }
-        restartServer();
-      },
-      function (code, signal, stderr) { // On Mongo dead
-        if (Status.shuttingDown) {
-          return;
-        }
-
-        // Print only last 20 lines of stderr.
-        stderr = stderr.split('\n').slice(-20).join('\n');
-
-        console.log(stderr + "Unexpected mongo exit code " + code + ". Restarting.\n");
-
-        // if mongo dies 3 times with less than 5 seconds between each,
-        // declare it failed and die.
-        mongoErrorCount += 1;
-        if (mongoErrorCount >= 3) {
-          var explanation = mongoExitCodes.Codes[code];
-          console.log("Can't start mongod\n");
-          if (explanation)
-            console.log(explanation.longText);
-          if (explanation === mongoExitCodes.EXIT_NET_ERROR)
-            console.log("\nCheck for other processes listening on port " + mongoPort +
-                        "\nor other meteors running in the same project.");
-          if (!explanation && /GLIBC/i.test(stderr))
-            console.log("\nLooks like you are trying to run Meteor on an old Linux " +
-                        "distribution. Meteor on Linux only supports Linux with glibc " +
-                        "version 2.9 and above. Try upgrading your distribution " +
-                        "to the latest version.");
-          process.exit(1);
-        }
-        if (mongoErrorTimer)
-          clearTimeout(mongoErrorTimer);
-        mongoErrorTimer = setTimeout(function () {
-          mongoErrorCount = 0;
-          mongoErrorTimer = null;
-        }, 5000);
-
-        // Wait a sec to restart.
-        setTimeout(launch, 1000);
       });
+    }).run();
   };
 
   startProxy(outerPort, innerPort, function () {
@@ -643,7 +677,7 @@ exports.run = function (context, options) {
 
     mongoStartupPrintTimer = setTimeout(function () {
       process.stdout.write("Initializing mongo database... this may take a moment.\n");
-    }, 3000);
+    }, 5000);
 
     updater.startUpdateChecks(context);
     launch();
