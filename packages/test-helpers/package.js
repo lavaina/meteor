@@ -39,5 +39,6 @@ Package.on_test(function (api) {
   api.use('tinytest');
   api.use(['test-helpers', 'underscore']);
   api.add_files('try_all_permutations_test.js', 'client');
+  api.add_files('async_multi_test.js', ['client','server']);
   api.add_files('seeded_random_test.js');
 });

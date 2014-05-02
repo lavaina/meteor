@@ -48,7 +48,7 @@ if (Meteor.isClient) (function () {
     }));
   };
 
-  testAsyncMulti("passwords - basic login with password", [
+  testAsyncMulti("passwords - basic login with password",180000, [
     function (test, expect) {
       // setup
       this.username = Random.id();
@@ -110,7 +110,7 @@ if (Meteor.isClient) (function () {
   ]);
 
 
-  testAsyncMulti("passwords - plain text passwords", [
+  testAsyncMulti("passwords - plain text passwords",10000, [
     function (test, expect) {
       // setup
       this.username = Random.id();
@@ -155,7 +155,7 @@ if (Meteor.isClient) (function () {
   ]);
 
 
-  testAsyncMulti("passwords - changing passwords", [
+  testAsyncMulti("passwords - changing passwords",10000, [
     function (test, expect) {
       // setup
       this.username = Random.id();
@@ -247,7 +247,7 @@ if (Meteor.isClient) (function () {
   ]);
 
 
-  testAsyncMulti("passwords - new user hooks", [
+  testAsyncMulti("passwords - new user hooks", 10000,[
     function (test, expect) {
       // setup
       this.username = Random.id();
@@ -292,7 +292,7 @@ if (Meteor.isClient) (function () {
   ]);
 
 
-  testAsyncMulti("passwords - Meteor.user()", [
+  testAsyncMulti("passwords - Meteor.user()",10000, [
     function (test, expect) {
       // setup
       this.username = Random.id();
@@ -337,7 +337,7 @@ if (Meteor.isClient) (function () {
     }
   ]);
 
-  testAsyncMulti("passwords - allow rules", [
+  testAsyncMulti("passwords - allow rules",10000, [
     // create a second user to have an id for in a later test
     function (test, expect) {
       this.otherUsername = Random.id();
@@ -406,7 +406,7 @@ if (Meteor.isClient) (function () {
   ]);
 
 
-  testAsyncMulti("passwords - tokens", [
+  testAsyncMulti("passwords - tokens",10000, [
     function (test, expect) {
       // setup
       this.username = Random.id();
