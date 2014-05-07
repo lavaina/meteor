@@ -3,6 +3,7 @@ var child_process = Npm.require('child_process');
 var querystring = Npm.require('querystring');
 var urlParser = Npm.require('url');
 
+
 Spiderable = {};
 
 // list of bot user agents that we want to serve statically, but do
@@ -35,13 +36,20 @@ WebApp.connectHandlers.use(function (req, res, next) {
       _.any(Spiderable.userAgentRegExps, function (re) {
         return re.test(req.headers['user-agent']); })) {
 
+
     // reassembling url without escaped fragment if exists
     var parsedUrl = urlParser.parse(req.url);
     var parsedQuery = querystring.parse(parsedUrl.query);
     delete parsedQuery['_escaped_fragment_'];
     var newQuery = querystring.stringify(parsedQuery);
     var newPath = parsedUrl.pathname + (newQuery ? ('?' + newQuery) : '');
-    var url = "http://" + req.headers.host + newPath;
+    var host = ""
+    if(process.env.SPIDRABLE_HOST){
+      host = process.env.SPIDRABLE_HOST
+    }else{
+      host = req.headers.host
+    }
+    var url = "http://" + host + newPath;
 
     // This string is going to be put into a bash script, so it's important
     // that 'url' (which comes from the network) can neither exploit phantomjs
@@ -71,6 +79,10 @@ WebApp.connectHandlers.use(function (req, res, next) {
           "  }" +
           "}, 100);\n";
 
+
+
+
+
     // Run phantomjs.
     //
     // Use '/dev/stdin' to avoid writing to a temporary file. We can't
@@ -83,13 +95,32 @@ WebApp.connectHandlers.use(function (req, res, next) {
     // work around this with a bash heredoc. (We previous used a "cat |"
     // instead, but that meant we couldn't use exec and had to manage several
     // processes.)
+
+
+    var command = "exec phantomjs --load-images=no /dev/stdin <<'END'\n"
+    if(process.env.SPIDRABLE_DEBUG){
+      console.log("URL:",url);
+      console.log("req.headers:",req.headers);
+      console.log("SPIDRABLE_HOST",process.env.SPIDRABLE_HOST);
+      console.log("ROOT_URL",process.env.ROOT_URL);
+      command = "exec phantomjs --load-images=no --debug=true /dev/stdin <<'END'\n"
+
+    }
+
     child_process.execFile(
       '/bin/bash',
       ['-c',
-       ("exec phantomjs --load-images=no /dev/stdin <<'END'\n" +
+       (command +
         phantomScript + "END\n")],
       {timeout: REQUEST_TIMEOUT, maxBuffer: MAX_BUFFER},
       function (error, stdout, stderr) {
+
+
+        if(process.env.SPIDRABLE_DEBUG){
+          Meteor._debug("\nspiderable: phantomjs: stdout:\n", stdout);
+          Meteor._debug("\nspiderable: phantomjs: stderr:\n", stderr);
+        }
+
         if (!error && /<html/i.test(stdout)) {
           res.writeHead(200, {'Content-Type': 'text/html; charset=UTF-8'});
           res.end(stdout);
@@ -98,8 +129,10 @@ WebApp.connectHandlers.use(function (req, res, next) {
           // normal page.
           if (error && error.code === 127)
             Meteor._debug("spiderable: phantomjs not installed. Download and install from http://phantomjs.org/");
-          else
-            Meteor._debug("spiderable: phantomjs failed:", error, "\nstderr:", stderr);
+          else {
+            Meteor._debug("spiderable: phantomjs failed: error:\n", error, "\nstdout:\n", stdout, "\nstderr:\n", stderr);
+          }
+
 
           next();
         }
