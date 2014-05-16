@@ -16,13 +16,13 @@ Package.on_use(function (api) {
   api.use('livedata');
 
   api.export('testAsyncMulti');
-  
+
   api.export([
     'pollUntil', 'try_all_permutations',
     'SeededRandom', 'ReactiveVar', 'clickElement', 'blurElement',
     'focusElement', 'simulateEvent', 'getStyleProperty', 'canonicalizeHtml',
     'withCallbackLogger', 'simplePoll',
-    'makeTestConnection', 'DomUtils'], {testOnly: true});
+    'makeTestConnection', 'DomUtils']);
 
   api.add_files('try_all_permutations.js');
   api.add_files('async_multi.js');
